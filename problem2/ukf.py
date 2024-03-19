@@ -2,42 +2,39 @@ import numpy as np
 from quaternion2 import Quaternion
 
 def compute_sigma_pts(quaternion_state, state_covariance, process_noise_covariance):
-    """Computes sigma points for the Unscented Kalman Filter."""
-    state_dimension = state_covariance.shape[0]  # Dimension of the state space
-    cholesky_factor = np.linalg.cholesky(state_covariance + process_noise_covariance) * np.sqrt(2 * state_dimension)  # Calculation of S
+    """Computes sigma points"""
+    state_dimension = state_covariance.shape[0]
+    cholesky_factor = np.linalg.cholesky(state_covariance + process_noise_covariance) * np.sqrt(2 * state_dimension)
     
-    sigma_point_offsets = np.hstack((cholesky_factor, -cholesky_factor))  # Concatenation of S and -S
+    sigma_point_offsets = np.hstack((cholesky_factor, -cholesky_factor))
 
-    
-    # print(sigma_point_offsets)
     sigma_pts = np.empty((2 * state_dimension,), dtype=object)
     for i in range(2 * state_dimension):
-        sigma_quat = Quaternion()
-        sigma_quat.from_axis_angle(sigma_point_offsets[:, i])
+        sigma_quat = Quaternion().from_axis_angle(sigma_point_offsets[:, i])
         
         sigma_pts[i] = quaternion_state * sigma_quat  # Quaternion rotation applied
 
-    sigma_pts_with_mean = np.insert(sigma_pts, 0, quaternion_state)  # Insert mean as first sigma point
+    sigma_pts_with_mean = np.insert(sigma_pts, 0, quaternion_state)
 
     return sigma_pts_with_mean
 
-def process_model(sigma_pts, gyroscope_measurement, delta_time):
-    """Processes sigma points through the dynamic model."""
+def process_model(sigma_pts, gyroscope_measurement):
+    """Processes sigma points through the model"""
     n = sigma_pts.shape[0]
     processed_sigma_pts = np.empty(n, dtype=object)
     
     gyroscope_delta_quat = Quaternion()
-    gyroscope_delta_quat.from_axis_angle(gyroscope_measurement * delta_time)  # Compute once for efficiency
+    gyroscope_delta_quat.from_axis_angle(gyroscope_measurement)
 
     for i in range(n):
-        processed_sigma_pts[i] = sigma_pts[i] * gyroscope_delta_quat  # Apply gyro rotation
+        processed_sigma_pts[i] = sigma_pts[i] * gyroscope_delta_quat
 
     return processed_sigma_pts
 
 def prediction(processed_sigma_pts, quat_prior):
-    """Predicts the next state."""
+    """Predicts the next state"""
     n = len(processed_sigma_pts)
-    quat_predicted, sigma_weights = quat_avg(processed_sigma_pts, quat_prior)  # Quaternion average calculation
+    quat_predicted, sigma_weights = quat_avg(processed_sigma_pts, quat_prior)
 
     predicted_covariance = np.zeros((3, 3))  # Initialize prediction covariance matrix
     for i in range(n):
@@ -47,17 +44,16 @@ def prediction(processed_sigma_pts, quat_prior):
     return quat_predicted, predicted_covariance, sigma_weights
 
 def measurement_model(processed_sigma_pts, acceleration_measurement, sigma_weights, measurement_noise_covariance):
-    """Models the measurement prediction."""
+    """Models the measurement prediction"""
     n = processed_sigma_pts.shape[0]
-    world_gravity_quat = Quaternion(scalar=0, vec=[0, 0, 1])  # World gravity as quaternion
+    gravity_quat = Quaternion(scalar=0, vec=[0, 0, 1])
 
     predicted_accelerations = np.zeros((n, 3))
     for i in range(n):
-        # Rotation of gravity to body frame for each sigma point
-        predicted_accelerations[i] = np.array((processed_sigma_pts[i].inv() * world_gravity_quat * processed_sigma_pts[i]).vec())
+        predicted_accelerations[i] = np.array((processed_sigma_pts[i].inv() * gravity_quat * processed_sigma_pts[i]).vec())
 
     mean_acceleration = np.mean(predicted_accelerations, axis=0)
-    mean_acceleration /= np.linalg.norm(mean_acceleration)  # Normalization
+    mean_acceleration /= np.linalg.norm(mean_acceleration)
 
     # Covariance matrices initialization
     measurement_covariance = np.zeros((3, 3))
@@ -76,7 +72,7 @@ def measurement_model(processed_sigma_pts, acceleration_measurement, sigma_weigh
     return measurement_innovation, innovation_covariance, cross_covariance
 
 def update(quat_predicted, predicted_covariance, measurement_innovation, innovation_covariance, kalman_gain):
-    """Updates the state with the measurement."""
+    """Updates the state with the measurement"""
     quat_gain = Quaternion()
     quat_gain.from_axis_angle(kalman_gain.dot(measurement_innovation))  # Convert to quaternion
     quat_updated = quat_gain * quat_predicted  # State update
@@ -86,7 +82,7 @@ def update(quat_predicted, predicted_covariance, measurement_innovation, innovat
     return quat_updated, updated_covariance
 
 def quat_avg(quaternions, initial_estimate):
-    """Computes the average of a set of quaternions."""
+    """Computes the average of a set of quaternions"""
     n = len(quaternions)
     epsilon = 1E-3  # Convergence criterion
     max_iter = 100  # Maximum number of iterations
