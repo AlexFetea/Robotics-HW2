@@ -59,10 +59,9 @@ def orientation_plot(imu_timestamps, ukf_estimated_euler, vicon_timestamps, vico
     plt.title('Yaw')
     plt.ylabel('Angle')
     
-    # Automatically adjust subplot parameters to give specified padding.
     plt.tight_layout()
 
-    # Manually adjust the spacing between subplots
+
     plt.subplots_adjust(hspace=0.5) 
 
     plt.show()
